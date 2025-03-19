@@ -65,6 +65,8 @@ class CharacteristicTile extends StatefulWidget {
 }
 
 class _CharacteristicTileState extends State<CharacteristicTile> {
+  BluetoothCharacteristic get c => widget.characteristic;
+
   List<int> _value = [];
   List<Map<String, dynamic>> _values = [];
 
@@ -74,18 +76,20 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
     _value = value;
 
     String formattedValues = processDataAccelerometer(value);
-    _values.add({
-      "createdAt": DateTime.now().toIso8601String(),
-      "value": formattedValues,
-      "user": 1
-    });
-
+    if (formattedValues != "") {
+      _values.add({
+        "createdAt": DateTime.now().toIso8601String(),
+        "value": formattedValues,
+        "user": 1
+      });
+    }
     print("_values length: ${_values.length}");
 
     if (_values.length == 500) {
       await sendDataToAPI(_values);
       _values.clear(); // Xóa dữ liệu sau khi đã gửi thành công
       _value = [10000000, 999999999, 999999999, 1000000];
+      c.setNotifyValue(false);
     }
 
     if (mounted) {
@@ -107,8 +111,6 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
     _lastValueSubscription.cancel();
     super.dispose();
   }
-
-  BluetoothCharacteristic get c => widget.characteristic;
 
   List<int> _getRandomBytes() {
     final math = Random();
