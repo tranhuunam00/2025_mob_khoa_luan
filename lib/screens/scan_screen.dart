@@ -64,14 +64,14 @@ class _ScanScreenState extends State<ScanScreen> {
     try {
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 15),
-        // webOptionalServices: [
-        //   Guid("180f"), // battery
-        //   Guid("1800"), // generic access
-        //   Guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e"), // Nordic UART
-        // ],
+        webOptionalServices: [
+          // Guid("180f"), // battery
+          // Guid("1800"), // generic access
+          // Guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e"), // Nordic UART
+          // Guid.fromString("19b10000-e8f2-537e-4f6c-d104768a1214")
+        ],
       );
     } catch (e) {
-      print("----------------");
       Snackbar.show(ABC.b, prettyException("Start Scan Error:", e),
           success: false);
       print(e);

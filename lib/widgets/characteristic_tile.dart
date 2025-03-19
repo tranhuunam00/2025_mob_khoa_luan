@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,49 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import "../utils/snackbar.dart";
 
 import "descriptor_tile.dart";
+import 'package:http/http.dart' as http;
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> sendDataToAPI(List<Map<String, dynamic>> values) async {
+  final url = Uri.parse("http://222.255.214.218:3001/iot");
+
+  final body = jsonEncode({"data": values});
+
+  print("Gửi dữ liệu lên API: $body");
+
+  try {
+    final response = await http.post(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: body,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      print("Dữ liệu đã được gửi thành công: ${response.body}");
+    } else {
+      print("Lỗi từ server: ${response.statusCode}, ${response.body}");
+    }
+  } catch (e) {
+    print("Lỗi kết nối API: $e");
+  }
+}
+
+String processDataAccelerometer(List<int> data) {
+  List<double> result = [];
+
+  for (int i = 0; i < data.length; i += 3) {
+    int sign = data[i] == 1 ? 1 : -1;
+    int integerPart = data[i + 1];
+    int decimalPart = data[i + 2];
+
+    double value = sign * (integerPart + decimalPart / 100.0);
+    result.add(value);
+  }
+  return result.map((num) => num.toString()).join(", ");
+}
 
 class CharacteristicTile extends StatefulWidget {
   final BluetoothCharacteristic characteristic;
@@ -22,18 +66,39 @@ class CharacteristicTile extends StatefulWidget {
 
 class _CharacteristicTileState extends State<CharacteristicTile> {
   List<int> _value = [];
+  List<Map<String, dynamic>> _values = [];
 
   late StreamSubscription<List<int>> _lastValueSubscription;
+
+  Future<void> handleNewValue(List<int> value) async {
+    _value = value;
+
+    String formattedValues = processDataAccelerometer(value);
+    _values.add({
+      "createdAt": DateTime.now().toIso8601String(),
+      "value": formattedValues,
+      "user": 1
+    });
+
+    print("_values length: ${_values.length}");
+
+    if (_values.length == 500) {
+      await sendDataToAPI(_values);
+      _values.clear(); // Xóa dữ liệu sau khi đã gửi thành công
+      _value = [10000000, 999999999, 999999999, 1000000];
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _lastValueSubscription =
         widget.characteristic.lastValueStream.listen((value) {
-      _value = value;
-      if (mounted) {
-        setState(() {});
-      }
+      handleNewValue(value);
     });
   }
 
