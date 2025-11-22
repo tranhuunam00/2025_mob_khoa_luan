@@ -6,32 +6,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import "../utils/snackbar.dart";
-
 import "descriptor_tile.dart";
 import 'package:http/http.dart' as http;
+
+import './chart_screen.dart'; // ⬅ nhớ import thêm màn hình chart
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> sendDataToAPI(List<Map<String, dynamic>> values) async {
   final url = Uri.parse("http://222.255.214.218:3001/iot");
-
   final body = jsonEncode({"data": values});
 
-  print("Gửi dữ liệu lên API: $body");
-
   try {
-    final response = await http.post(
-      url,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: body,
-    );
+    final response = await http.post(url,
+        headers: {"Content-Type": "application/json"}, body: body);
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      print("Dữ liệu đã được gửi thành công: ${response.body}");
+      print("Dữ liệu đã gửi thành công");
     } else {
-      print("Lỗi từ server: ${response.statusCode}, ${response.body}");
+      print("Lỗi server: ${response.statusCode}");
     }
   } catch (e) {
     print("Lỗi kết nối API: $e");
@@ -41,24 +34,25 @@ Future<void> sendDataToAPI(List<Map<String, dynamic>> values) async {
 String processDataAccelerometer(List<int> data) {
   List<double> result = [];
 
-  for (int i = 0; i < data.length; i += 3) {
+  for (int i = 0; i + 2 < data.length; i += 3) {
     int sign = data[i] == 1 ? 1 : -1;
-    int integerPart = data[i + 1];
-    int decimalPart = data[i + 2];
-
-    double value = sign * (integerPart + decimalPart / 100.0);
-    result.add(value);
+    int intPart = data[i + 1];
+    int decPart = data[i + 2];
+    result.add(sign * (intPart + decPart / 100.0));
   }
-  return result.map((num) => num.toString()).join(", ");
+
+  return result.map((e) => e.toString()).join(", ");
 }
 
 class CharacteristicTile extends StatefulWidget {
   final BluetoothCharacteristic characteristic;
   final List<DescriptorTile> descriptorTiles;
 
-  const CharacteristicTile(
-      {Key? key, required this.characteristic, required this.descriptorTiles})
-      : super(key: key);
+  const CharacteristicTile({
+    Key? key,
+    required this.characteristic,
+    required this.descriptorTiles,
+  }) : super(key: key);
 
   @override
   State<CharacteristicTile> createState() => _CharacteristicTileState();
@@ -72,175 +66,127 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
 
   late StreamSubscription<List<int>> _lastValueSubscription;
 
-  Future<void> handleNewValue(List<int> value) async {
-    _value = value;
-
-    String formattedValues = processDataAccelerometer(value);
-    if (formattedValues != "") {
-      _values.add({
-        "createdAt": DateTime.now().toIso8601String(),
-        "value": formattedValues,
-        "user": 1
-      });
-    }
-    print("_values length: ${_values.length}");
-
-    if (_values.length == 500) {
-      await sendDataToAPI(_values);
-      _values.clear(); // Xóa dữ liệu sau khi đã gửi thành công
-      _value = [10000000, 999999999, 999999999, 1000000];
-      c.setNotifyValue(false);
-    }
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
   @override
   void initState() {
     super.initState();
+
+    /// ❗ Nếu là UUID chính → KHÔNG xử lý ở đây
+    if (_isAccelUUID()) return;
+
     _lastValueSubscription =
         widget.characteristic.lastValueStream.listen((value) {
       handleNewValue(value);
     });
   }
 
+  bool _isAccelUUID() {
+    return widget.characteristic.uuid.str.toLowerCase() ==
+        "19b10001-e8f2-537e-4f6c-d104768a1214";
+  }
+
   @override
   void dispose() {
-    _lastValueSubscription.cancel();
+    if (!_isAccelUUID()) {
+      _lastValueSubscription.cancel();
+    }
     super.dispose();
   }
 
-  List<int> _getRandomBytes() {
-    final math = Random();
-    return [
-      math.nextInt(255),
-      math.nextInt(255),
-      math.nextInt(255),
-      math.nextInt(255)
-    ];
-  }
+  // Xử lý bình thường cho các characteristic khác
+  Future<void> handleNewValue(List<int> value) async {
+    _value = value;
 
-  Future onReadPressed() async {
-    try {
-      await c.read();
-      Snackbar.show(ABC.c, "Read: Success", success: true);
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Read Error:", e), success: false);
-      print(e);
+    String formatted = processDataAccelerometer(value);
+
+    if (formatted.isNotEmpty) {
+      _values.add({
+        "createdAt": DateTime.now().toIso8601String(),
+        "value": formatted,
+        "user": 1
+      });
     }
-  }
 
-  Future onWritePressed() async {
-    try {
-      await c.write(_getRandomBytes(),
-          withoutResponse: c.properties.writeWithoutResponse);
-      Snackbar.show(ABC.c, "Write: Success", success: true);
-      if (c.properties.read) {
-        await c.read();
-      }
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Write Error:", e), success: false);
-      print(e);
+    if (_values.length >= 500) {
+      await sendDataToAPI(_values);
+      _values.clear();
+      await c.setNotifyValue(false);
     }
+
+    if (mounted) setState(() {});
   }
 
-  Future onSubscribePressed() async {
-    try {
-      String op = c.isNotifying == false ? "Subscribe" : "Unubscribe";
-      await c.setNotifyValue(c.isNotifying == false);
-      Snackbar.show(ABC.c, "$op : Success", success: true);
-      if (c.properties.read) {
-        await c.read();
-      }
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Subscribe Error:", e),
-          success: false);
-      print(e);
-    }
-  }
-
-  Widget buildUuid(BuildContext context) {
-    String uuid = '0x${widget.characteristic.uuid.str.toUpperCase()}';
-    return Text(uuid, style: TextStyle(fontSize: 13));
-  }
-
-  Widget buildValue(BuildContext context) {
-    String data = _value.toString();
-    return Text(data, style: TextStyle(fontSize: 13, color: Colors.grey));
-  }
-
-  Widget buildReadButton(BuildContext context) {
-    return TextButton(
-        child: Text("Read"),
-        onPressed: () async {
-          await onReadPressed();
-          if (mounted) {
-            setState(() {});
-          }
-        });
-  }
-
-  Widget buildWriteButton(BuildContext context) {
-    bool withoutResp = widget.characteristic.properties.writeWithoutResponse;
-    return TextButton(
-        child: Text(withoutResp ? "WriteNoResp" : "Write"),
-        onPressed: () async {
-          await onWritePressed();
-          if (mounted) {
-            setState(() {});
-          }
-        });
-  }
-
-  Widget buildSubscribeButton(BuildContext context) {
-    bool isNotifying = widget.characteristic.isNotifying;
-    return TextButton(
-        child: Text(isNotifying ? "Unsubscribe" : "Subscribe"),
-        onPressed: () async {
-          await onSubscribePressed();
-          if (mounted) {
-            setState(() {});
-          }
-        });
-  }
-
-  Widget buildButtonRow(BuildContext context) {
-    bool read = widget.characteristic.properties.read;
-    bool write = widget.characteristic.properties.write;
-    bool notify = widget.characteristic.properties.notify;
-    bool indicate = widget.characteristic.properties.indicate;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (read) buildReadButton(context),
-        if (write) buildWriteButton(context),
-        if (notify || indicate) buildSubscribeButton(context),
-      ],
-    );
-  }
+  // ========================= UI =========================
 
   @override
   Widget build(BuildContext context) {
+    final uuid = c.uuid.str.toLowerCase();
+
+    /// 🔥 Nếu là characteristic chính → chuyển sang ChartScreen
+    if (_isAccelUUID()) {
+      return ListTile(
+        title: const Text(
+          "Accelerometer Stream",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text("UUID: $uuid"),
+        trailing: const Icon(Icons.bar_chart, color: Colors.blue),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChartScreen(characteristic: c),
+            ),
+          );
+        },
+      );
+    }
+
+    /// 🔥 Các characteristic khác → giữ nguyên UI cũ
     return ExpansionTile(
       title: ListTile(
         title: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
+          children: [
             const Text('Characteristic'),
-            buildUuid(context),
-            buildValue(context),
+            Text('0x${c.uuid.str.toUpperCase()}'),
+            Text(
+              _value.toString(),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
         subtitle: buildButtonRow(context),
-        contentPadding: const EdgeInsets.all(0.0),
+        contentPadding: EdgeInsets.zero,
       ),
       children: widget.descriptorTiles,
+    );
+  }
+
+  Widget buildButtonRow(BuildContext context) {
+    return Row(
+      children: [
+        if (c.properties.read)
+          TextButton(
+            child: const Text("Read"),
+            onPressed: () async {
+              await c.read();
+              setState(() {});
+            },
+          ),
+        if (c.properties.write)
+          TextButton(
+            child: const Text("Write"),
+            onPressed: () async => await c.write([1, 2, 3, 4]),
+          ),
+        if (c.properties.notify)
+          TextButton(
+            child: Text(c.isNotifying ? "Unsubscribe" : "Subscribe"),
+            onPressed: () async {
+              await c.setNotifyValue(!c.isNotifying);
+              setState(() {});
+            },
+          ),
+      ],
     );
   }
 }
