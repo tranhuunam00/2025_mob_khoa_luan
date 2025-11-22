@@ -25,7 +25,7 @@ class _ChartScreenState extends State<ChartScreen> {
   double t = 0;
 
   static const int maxPoints = 200; // viewport hiển thị
-  static const int sendBatch = 100; // gửi server mỗi 100 mẫu
+  static const int sendBatch = 500; // gửi server mỗi 100 mẫu
   static const int resetLimit = 2000; // tránh tràn bộ nhớ
 
   final List<Map<String, dynamic>> buffer = [];
