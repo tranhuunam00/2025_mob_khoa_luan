@@ -130,13 +130,13 @@ class _ChartScreenState extends State<ChartScreen> {
     final double maxX = t;
 
     return SizedBox(
-      height: 180,
+      height: 280,
       child: LineChart(
         LineChartData(
           minX: minX,
           maxX: maxX,
-          minY: -3, // accelerometer đúng khoảng ±2g → thêm margin
-          maxY: 3,
+          minY: -2, // accelerometer đúng khoảng ±2g → thêm margin
+          maxY: 2,
 
           lineBarsData: [
             LineChartBarData(
@@ -164,6 +164,28 @@ class _ChartScreenState extends State<ChartScreen> {
 
           gridData: FlGridData(show: true),
           borderData: FlBorderData(show: true),
+
+          lineTouchData: LineTouchData(enabled: false),
+        ),
+        const SizedBox(height: 12),
+
+        // LEGEND
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            LegendItem(color: Colors.red, text: "X-axis"),
+            SizedBox(width: 12),
+            LegendItem(color: Colors.green, text: "Y-axis"),
+            SizedBox(width: 12),
+            LegendItem(color: Colors.blue, text: "Z-axis"),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+
+        const Text(
+          "Dữ liệu cảm biến gia tốc (Accelerometer Data)",
+          style: TextStyle(fontSize: 14, color: Colors.black87),
         ),
       ),
     );
