@@ -207,7 +207,7 @@ class _ChartScreenState extends State<ChartScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Realtime Accelerometer Chart")),
+      appBar: AppBar(title: const Text("Realtime")),
       body: Column(
         children: [
           const SizedBox(height: 8),
