@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 class ChartScreen extends StatefulWidget {
   final BluetoothCharacteristic characteristic;
+
   const ChartScreen({super.key, required this.characteristic});
 
   @override
@@ -23,30 +24,43 @@ class _ChartScreenState extends State<ChartScreen> {
 
   double t = 0;
 
-  static const int maxPoints = 100; // chỉ hiển thị 100 điểm
-  static const int sendBatch = 500; // gửi server mỗi 50 mẫu
-  static const int resetChartLimit = 2000; // reset chart tránh tràn RAM
+  static const int maxPoints = 200; // viewport hiển thị
+  static const int sendBatch = 100; // gửi server mỗi 100 mẫu
+  static const int resetLimit = 2000; // tránh tràn bộ nhớ
 
   final List<Map<String, dynamic>> buffer = [];
 
   int receivedSamples = 0;
   int sentSamples = 0;
 
+  Timer? chartTimer;
+  bool needRepaint = false;
+
   @override
   void initState() {
     super.initState();
+
     widget.characteristic.setNotifyValue(true);
-    sub = widget.characteristic.lastValueStream.listen(handleValue);
+    sub = widget.characteristic.lastValueStream.listen(handleBLE);
+
+    // 20 FPS
+    chartTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (needRepaint && mounted) {
+        setState(() {});
+        needRepaint = false;
+      }
+    });
   }
 
   @override
   void dispose() {
+    chartTimer?.cancel();
     sub.cancel();
     widget.characteristic.setNotifyValue(false);
     super.dispose();
   }
 
-  // ========== SEND TO SERVER ==========
+  // ========== SEND ==============
   Future<void> send(List<Map<String, dynamic>> values) async {
     final url = Uri.parse("http://222.255.214.218:3001/iot");
     final body = jsonEncode({"data": values});
@@ -60,138 +74,136 @@ class _ChartScreenState extends State<ChartScreen> {
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         sentSamples += values.length;
-        print("✔ SERVER OK: ${res.statusCode} (${values.length} samples)");
+        print("✔ Sent ${values.length}");
       } else {
-        print("❌ SERVER ERROR: ${res.statusCode}");
+        print("❌ Server error ${res.statusCode}");
       }
     } catch (e) {
-      print("❌ Send error: $e");
+      print("❌ Send error $e");
     }
 
     if (mounted) setState(() {});
   }
 
-  // ========== PARSE ACCEL ==========
-  List<double> parse(List<int> data) {
+  // ========== PARSE ==========
+  List<double> parse(List<int> d) {
     List<double> out = [];
-    for (int i = 0; i + 2 < data.length; i += 3) {
-      int sign = data[i] == 1 ? 1 : -1;
-      double v = sign * (data[i + 1] + data[i + 2] / 100.0);
+    for (int i = 0; i + 2 < d.length; i += 3) {
+      int sign = d[i] == 1 ? 1 : -1;
+      double v = sign * (d[i + 1] + d[i + 2] / 100.0);
       out.add(v);
     }
     return out;
   }
 
-  // ========== HANDLE NOTIFY ==========
-  void handleValue(List<int> raw) {
+  // ========== HANDLE BLE ==========
+  void handleBLE(List<int> raw) {
     receivedSamples++;
 
     final parsed = parse(raw);
+
     if (parsed.length >= 3) {
+      // ❗ KHÔNG XÓA PHẦN TỬ ĐẦU – KHÔNG REMOVEAT
       xList.add(FlSpot(t, parsed[0]));
       yList.add(FlSpot(t, parsed[1]));
       zList.add(FlSpot(t, parsed[2]));
 
-      if (xList.length > maxPoints) xList.removeAt(0);
-      if (yList.length > maxPoints) yList.removeAt(0);
-      if (zList.length > maxPoints) zList.removeAt(0);
-
       t++;
+      needRepaint = true;
     }
 
+    // BUFFER CHO SERVER
     buffer.add({
       "createdAt": DateTime.now().toIso8601String(),
       "value": parsed.join(", "),
       "user": 1
     });
 
-    // ==== RESET CHART AVOID MEMORY LEAK ====
-    if (receivedSamples >= resetChartLimit) {
+    // RESET TRÁNH TRÀN RAM
+    if (receivedSamples >= resetLimit) {
       xList.clear();
       yList.clear();
       zList.clear();
       t = 0;
       receivedSamples = 0;
-      print("⚠ RESET chart to avoid memory overflow");
+      print("⚠ Chart reset to avoid memory overflow");
     }
 
-    // ==== SEND SERVER ====
+    // GỬI SERVER
     if (buffer.length >= sendBatch) {
       send(List<Map<String, dynamic>>.from(buffer));
       buffer.clear();
     }
-
-    if (mounted) setState(() {});
   }
 
-  // ========== CHART WIDGET ==========
+  // ========== CHART ==========
   Widget buildChart() {
-    final double minX = (t - maxPoints).clamp(0, double.infinity).toDouble();
+    final double minX = (t - maxPoints).clamp(0, double.infinity);
     final double maxX = t;
 
-    return SizedBox(
-      height: 280,
-      child: LineChart(
-        LineChartData(
-          minX: minX,
-          maxX: maxX,
-          minY: -2, // accelerometer đúng khoảng ±2g → thêm margin
-          maxY: 2,
+    return Column(
+      children: [
+        SizedBox(
+          height: 260,
+          child: LineChart(
+            LineChartData(
+              minX: minX,
+              maxX: maxX,
+              minY: -2,
+              maxY: 2,
 
-          lineBarsData: [
-            LineChartBarData(
-              spots: xList,
-              color: Colors.red,
-              isCurved: true,
-              barWidth: 2,
-              dotData: FlDotData(show: false),
-            ),
-            LineChartBarData(
-              spots: yList,
-              color: Colors.green,
-              isCurved: true,
-              barWidth: 2,
-              dotData: FlDotData(show: false),
-            ),
-            LineChartBarData(
-              spots: zList,
-              color: Colors.blue,
-              isCurved: true,
-              barWidth: 2,
-              dotData: FlDotData(show: false),
-            ),
-          ],
+              // KHÓA Y để không scale → đảm bảo không nháy
+              baselineY: 0,
+              lineTouchData: LineTouchData(enabled: false),
 
-          gridData: FlGridData(show: true),
-          borderData: FlBorderData(show: true),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: xList,
+                  color: Colors.red,
+                  isCurved: false,
+                  barWidth: 2,
+                  dotData: FlDotData(show: false),
+                ),
+                LineChartBarData(
+                  spots: yList,
+                  color: Colors.green,
+                  isCurved: false,
+                  barWidth: 2,
+                  dotData: FlDotData(show: false),
+                ),
+                LineChartBarData(
+                  spots: zList,
+                  color: Colors.blue,
+                  isCurved: false,
+                  barWidth: 2,
+                  dotData: FlDotData(show: false),
+                ),
+              ],
 
-          lineTouchData: LineTouchData(enabled: false),
+              gridData: FlGridData(show: true),
+              borderData: FlBorderData(show: true),
+            ),
+          ),
         ),
-        const SizedBox(height: 12),
-
-        // LEGEND
+        const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: const [
-            LegendItem(color: Colors.red, text: "X-axis"),
-            SizedBox(width: 12),
-            LegendItem(color: Colors.green, text: "Y-axis"),
-            SizedBox(width: 12),
-            LegendItem(color: Colors.blue, text: "Z-axis"),
+            LegendItem(color: Colors.red, text: "X"),
+            SizedBox(width: 16),
+            LegendItem(color: Colors.green, text: "Y"),
+            SizedBox(width: 16),
+            LegendItem(color: Colors.blue, text: "Z"),
           ],
         ),
-
         const SizedBox(height: 8),
-
-        const Text(
-          "Dữ liệu cảm biến gia tốc (Accelerometer Data)",
-          style: TextStyle(fontSize: 14, color: Colors.black87),
-        ),
-      ),
+        const Text("Dữ liệu cảm biến gia tốc",
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      ],
     );
   }
 
-  // ========== UI ==========
+  // ========== UI MAIN ==========
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -203,19 +215,35 @@ class _ChartScreenState extends State<ChartScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: buildChart(),
           ),
-          const SizedBox(height: 12),
-          Text("📥 Received: $receivedSamples samples",
+          const SizedBox(height: 16),
+          Text("📥 Nhận: $receivedSamples mẫu",
               style: const TextStyle(fontSize: 16)),
-          Text("📤 Sent: $sentSamples samples",
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue)),
-          const SizedBox(height: 10),
-          const Text("BLE Accelerometer Streaming...",
-              style: TextStyle(color: Colors.grey)),
+          Text("📤 Đã gửi: $sentSamples mẫu",
+              style: const TextStyle(fontSize: 16, color: Colors.blue)),
         ],
       ),
+    );
+  }
+}
+
+class LegendItem extends StatelessWidget {
+  final Color color;
+  final String text;
+
+  const LegendItem({super.key, required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(text)
+      ],
     );
   }
 }
