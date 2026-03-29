@@ -8,8 +8,10 @@ import 'package:http/http.dart' as http;
 
 class ChartScreen extends StatefulWidget {
   final BluetoothCharacteristic characteristic;
+  final int userId;
 
-  const ChartScreen({super.key, required this.characteristic});
+  const ChartScreen(
+      {super.key, required this.characteristic, required this.userId});
 
   @override
   State<ChartScreen> createState() => _ChartScreenState();
@@ -116,7 +118,7 @@ class _ChartScreenState extends State<ChartScreen> {
     buffer.add({
       "createdAt": DateTime.now().toIso8601String(),
       "value": parsed.join(", "),
-      "user": 1
+      "user": widget.userId
     });
 
     // RESET TRÁNH TRÀN RAM

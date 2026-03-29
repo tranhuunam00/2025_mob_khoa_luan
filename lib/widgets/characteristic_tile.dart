@@ -63,7 +63,7 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
 
   List<int> _value = [];
   List<Map<String, dynamic>> _values = [];
-
+  int selectedUserId = 1;
   late StreamSubscription<List<int>> _lastValueSubscription;
 
   @override
@@ -102,7 +102,7 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
       _values.add({
         "createdAt": DateTime.now().toIso8601String(),
         "value": formatted,
-        "user": 1
+        "user": selectedUserId
       });
     }
 
@@ -120,6 +120,7 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
   @override
   Widget build(BuildContext context) {
     final uuid = c.uuid.str.toLowerCase();
+    print("USER ID: ${selectedUserId}");
 
     /// 🔥 Nếu là characteristic chính → chuyển sang ChartScreen
     if (_isAccelUUID()) {
@@ -130,13 +131,22 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
         ),
         subtitle: Text("UUID: $uuid"),
         trailing: const Icon(Icons.bar_chart, color: Colors.blue),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChartScreen(characteristic: c),
-            ),
-          );
+        onTap: () async {
+          int? userId = await _showUserDialog(context);
+
+          if (userId != null) {
+            selectedUserId = userId;
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChartScreen(
+                  characteristic: c,
+                  userId: selectedUserId,
+                ),
+              ),
+            );
+          }
         },
       );
     }
@@ -189,4 +199,46 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
       ],
     );
   }
+}
+
+Future<int?> _showUserDialog(BuildContext context) async {
+  TextEditingController controller = TextEditingController();
+
+  return showDialog<int>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text("Nhập User ID"),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            hintText: "Ví dụ: 1",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text("Hủy"),
+          ),
+          TextButton(
+            onPressed: () {
+              int? userId = int.tryParse(controller.text);
+
+              if (userId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("User ID không hợp lệ")),
+                );
+                return;
+              }
+
+              Navigator.pop(context, userId);
+            },
+            child: const Text("OK"),
+          ),
+        ],
+      );
+    },
+  );
 }
