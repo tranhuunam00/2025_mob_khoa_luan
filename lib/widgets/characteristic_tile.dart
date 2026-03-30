@@ -137,20 +137,15 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
         trailing: const Icon(Icons.bar_chart, color: Colors.blue),
         onTap: () async {
           int? userId = await _showUserDialog(context);
-
-          if (userId != null) {
-            selectedUserId = userId;
-
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChartScreen(
-                  characteristic: c,
-                  userId: selectedUserId!,
-                ),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChartScreen(
+                characteristic: c,
+                userId: userId!,
               ),
-            );
-          }
+            ),
+          );
         },
       );
     }
