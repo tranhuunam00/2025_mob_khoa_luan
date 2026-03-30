@@ -63,7 +63,7 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
 
   List<int> _value = [];
   List<Map<String, dynamic>> _values = [];
-  int selectedUserId = 1;
+  int? selectedUserId;
   late StreamSubscription<List<int>> _lastValueSubscription;
 
   @override
@@ -106,13 +106,17 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
       });
     }
 
-    if (_values.length >= 500) {
+    if (_values.length >= 10) {
+      print("-----------------------------------");
+      print("Gửi batch ${_values} mẫu đến server...");
       await sendDataToAPI(_values);
       _values.clear();
       await c.setNotifyValue(false);
     }
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   // ========================= UI =========================
@@ -142,7 +146,7 @@ class _CharacteristicTileState extends State<CharacteristicTile> {
               MaterialPageRoute(
                 builder: (_) => ChartScreen(
                   characteristic: c,
-                  userId: selectedUserId,
+                  userId: selectedUserId!,
                 ),
               ),
             );
